@@ -1,13 +1,173 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="style.css">
-    <title>Swarm IO</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Slither.io</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <script src="game.js"></script>
-    
+  <!-- Combined Lobby / Death Screen -->
+  <section id="screen-lobby" class="screen">
+    <div id="lobby-main-ui" class="lobby-ui-container">
+      <!-- Top-Right Graphics Widget -->
+      <div class="corner-widget graphics-widget">
+        <span class="widget-label">Graphics:</span>
+        <span class="widget-val">High quality</span>
+        <div class="graphics-snake-icon">
+          <svg viewBox="0 0 100 100" width="80" height="80">
+            <defs>
+              <radialGradient id="green-grad" cx="50%" cy="30%" r="50%">
+                <stop offset="0%" stop-color="#a3f28c" />
+                <stop offset="60%" stop-color="#4ea83d" />
+                <stop offset="100%" stop-color="#1f5415" />
+              </radialGradient>
+              <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="2" dy="4" stdDeviation="3" flood-color="#000" flood-opacity="0.6"/>
+              </filter>
+            </defs>
+            <g filter="url(#shadow)">
+              <circle cx="50" cy="75" r="14" fill="url(#green-grad)" />
+              <circle cx="42" cy="62" r="13.5" fill="url(#green-grad)" />
+              <circle cx="44" cy="48" r="13" fill="url(#green-grad)" />
+              <circle cx="54" cy="38" r="13" fill="url(#green-grad)" />
+              <circle cx="64" cy="26" r="14.5" fill="url(#green-grad)" />
+              <circle cx="58" cy="22" r="4.5" fill="white" />
+              <circle cx="58" cy="22" r="2.2" fill="black" />
+              <circle cx="68" cy="20" r="4.5" fill="white" />
+              <circle cx="68" cy="20" r="2.2" fill="black" />
+              <ellipse cx="54" cy="28" rx="2" ry="1" fill="#ff7da0" opacity="0.6" />
+              <ellipse cx="72" cy="26" rx="2" ry="1" fill="#ff7da0" opacity="0.6" />
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Center Lobby Panel -->
+      <div class="panel">
+        <h1><span class="logo-green">slither</span><span class="logo-purple">.io</span></h1>
+        <p class="highestScore" id="highest-score"></p>
+        
+        <!-- Death Score Container (visible only after dying) -->
+        <div id="death-score-container" class="death-score-container hidden">
+          <p class="game-over-label">Game Over</p>
+          <p id="final-score">Your final length was 0</p>
+        </div>
+
+        <div class="input-container">
+          <input id="player-name" maxlength="16" placeholder="Nickname" autocomplete="off" value="">
+        </div>
+
+        <button id="play-button" class="primary-button">Play</button>
+      </div>
+
+      <!-- Bottom-Left Change Skin Widget -->
+      <div class="corner-widget skin-widget" id="skin-selector-btn">
+        <div class="skin-snake-icon">
+          <svg viewBox="0 0 100 100" width="80" height="80">
+            <defs>
+              <radialGradient id="purple-grad" cx="50%" cy="30%" r="50%">
+                <stop offset="0%" stop-color="#d6b3ff" />
+                <stop offset="60%" stop-color="#7a4fc7" />
+                <stop offset="100%" stop-color="#3c1e75" />
+              </radialGradient>
+            </defs>
+            <g filter="url(#shadow)">
+              <circle cx="50" cy="75" r="14" fill="url(#purple-grad)" />
+              <circle cx="58" cy="62" r="13.5" fill="url(#purple-grad)" />
+              <circle cx="56" cy="48" r="13" fill="url(#purple-grad)" />
+              <circle cx="46" cy="38" r="13" fill="url(#purple-grad)" />
+              <circle cx="36" cy="26" r="14.5" fill="url(#purple-grad)" />
+              <circle cx="32" cy="20" r="4.5" fill="white" />
+              <circle cx="32" cy="20" r="2.2" fill="black" />
+              <circle cx="42" cy="22" r="4.5" fill="white" />
+              <circle cx="42" cy="22" r="2.2" fill="black" />
+              <ellipse cx="28" cy="26" rx="2" ry="1" fill="#ff7da0" opacity="0.6" />
+              <ellipse cx="44" cy="28" rx="2" ry="1" fill="#ff7da0" opacity="0.6" />
+            </g>
+          </svg>
+        </div>
+        <span>Change Skin</span>
+      </div>
+
+      <div id="theme-list" class="theme-list hidden">
+        <button class="theme-card selected" data-theme="classic">Classic</button>
+        <button class="theme-card" data-theme="neon">Neon</button>
+        <button class="theme-card" data-theme="pastel">Pastel</button>
+        <button class="theme-card" data-theme="ocean">Ocean</button>
+        <button class="theme-card" data-theme="desert">Desert</button>
+        <button class="theme-card" data-theme="rainbow">Rainbow 🌈</button>
+        <button class="theme-card" data-theme="sunset">Sunset 🌅</button>
+        <button class="theme-card" data-theme="raccoon">Raccoon 🦝</button>
+        <button class="theme-card" data-theme="bear">Bear 🐻</button>
+        <button class="theme-card" data-theme="rabbit">Rabbit 🐰</button>
+      </div>
+
+      <!-- Bottom-Right Server Widget -->
+      <div class="corner-widget server-widget">
+        <div class="globe-icon">
+          <svg viewBox="0 0 100 100" width="80" height="80">
+            <defs>
+              <radialGradient id="ocean-grad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#4aaae6" />
+                <stop offset="70%" stop-color="#216fa3" />
+                <stop offset="100%" stop-color="#0f3c5c" />
+              </radialGradient>
+              <radialGradient id="land-grad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#8cdb6e" />
+                <stop offset="100%" stop-color="#3d8226" />
+              </radialGradient>
+            </defs>
+            <g filter="url(#shadow)">
+              <circle cx="50" cy="50" r="45" fill="url(#ocean-grad)" />
+              <path d="M 25,35 Q 22,25 35,20 T 55,25 T 65,40 T 45,50 T 25,35 Z" fill="url(#land-grad)" opacity="0.95" />
+              <path d="M 60,55 Q 75,50 80,65 T 70,80 T 50,75 T 60,55 Z" fill="url(#land-grad)" opacity="0.95" />
+              <path d="M 20,60 Q 30,55 35,68 T 25,80 T 15,70 T 20,60 Z" fill="url(#land-grad)" opacity="0.95" />
+              <path d="M 12,30 A 40,40 0 0 1 70,12 A 44,44 0 0 0 12,30 Z" fill="white" opacity="0.18" />
+            </g>
+          </svg>
+        </div>
+        <span>Choose Server</span>
+      </div>
+
+      <!-- Bottom Center Links -->
+      <div class="footer-links">privacy - terms of service - contact</div>
+    </div>
+
+    <!-- Immersive Skin Selector Interface -->
+    <div id="skin-selector-ui" class="hidden">
+      <div class="skin-selector-container">
+        <button id="skin-prev-btn" class="arrow-btn" aria-label="Previous Skin">
+          <svg viewBox="0 0 100 100" width="80" height="80">
+            <defs>
+              <filter id="arrow-shadow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="5" stdDeviation="3.5" flood-color="#000" flood-opacity="0.65"/>
+              </filter>
+            </defs>
+            <g filter="url(#arrow-shadow)">
+              <path d="M 65,18 L 65,36 L 85,36 L 85,64 L 65,64 L 65,82 L 20,50 Z" fill="#7dbb84" stroke="#1d3321" stroke-width="3" stroke-linejoin="round" />
+            </g>
+          </svg>
+        </button>
+        
+        <canvas id="skin-preview-canvas" width="600" height="320"></canvas>
+        
+        <button id="skin-next-btn" class="arrow-btn" aria-label="Next Skin">
+          <svg viewBox="0 0 100 100" width="80" height="80">
+            <g filter="url(#arrow-shadow)">
+              <path d="M 35,18 L 35,36 L 15,36 L 15,64 L 35,64 L 35,82 L 80,50 Z" fill="#7dbb84" stroke="#1d3321" stroke-width="3" stroke-linejoin="round" />
+            </g>
+          </svg>
+        </button>
+      </div>
+      
+      <button id="skin-save-btn">Save</button>
+    </div>
+  </section>
+
+  <!-- The Game Canvas -->
+  <canvas id="game-canvas"></canvas>
+
+  <script type="module" src="game.js"></script>
 </body>
 </html>
