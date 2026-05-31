@@ -33,7 +33,7 @@ import {
   handleCollisionInteractionSpawnFoodRandomly
 } from './utils/collisionInteraction.js';
 
-const SERVER_URL = location.hostname === 'localhost' || location.hostname === '127.0.0.1' ? 'ws://localhost:3000' : 'wss://swarm-backend-kf37.onrender.com';
+const SERVER_URL = 'ws://83.171.249.199:3000';
 const canvas = document.getElementById('game-canvas');
 const ctx = canvas.getContext('2d');
 const lobby = document.getElementById('screen-lobby');

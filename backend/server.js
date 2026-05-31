@@ -25,6 +25,7 @@ const {
 
 const PORT = process.env.PORT || 3000;
 const TICK_MS = 60;
+const MIN_ACTIVE_PLAYERS = 10;
 
 function randomArenaPoint(padding) {
   return handlePlayerMovementRandomArenaPoint(ARENA_CENTER, ARENA_RADIUS, padding);
@@ -157,8 +158,7 @@ class GameRoom {
     this.clients = new Map();
     this.nextId = 1;
     this.lastScores = 0;
-    // Spawn 10 bots to keep the giant battleground alive and populated
-    for (let i = 0; i < 10; i++) this.addBot();
+    this.ensureBotPopulation();
   }
 
   addClient(ws, name, theme) {
@@ -167,7 +167,69 @@ class GameRoom {
     const snake = handleGameRestartBuildSnake(Snake, String(this.nextId++), cleanName(name), spawn, activeTheme, THEMES);
     this.snakes[snake.id] = snake;
     this.clients.set(ws, snake.id);
+    const populationChanged = this.rebuildBotsNearPlayers();
     ws.send(JSON.stringify({ type: 'init', selfId: snake.id, mapSize: MAP_SIZE, snakes: Object.values(this.snakes), food: [], config: { tickMs: TICK_MS } }));
+    if (populationChanged.added.length || populationChanged.removed.length) {
+      this.broadcast({ type: 'delta', moved: [], died: populationChanged.removed, sync: true });
+    }
+  }
+
+  isBotId(id) {
+    return String(id).startsWith('bot-');
+  }
+
+  aliveHumanCount() {
+    let count = 0;
+    for (const id in this.snakes) {
+      const snake = this.snakes[id];
+      if (!this.isBotId(id) && snake.alive) count++;
+    }
+    return count;
+  }
+
+  aliveBotIds() {
+    return Object.keys(this.snakes).filter(id => this.isBotId(id) && this.snakes[id].alive);
+  }
+
+  targetBotCount() {
+    return Math.max(0, MIN_ACTIVE_PLAYERS - this.aliveHumanCount());
+  }
+
+  ensureBotPopulation() {
+    const target = this.targetBotCount();
+    let botIds = this.aliveBotIds();
+    const changed = { added: [], removed: [] };
+
+    while (botIds.length < target) {
+      const bot = this.addBot();
+      changed.added.push(bot.id);
+      botIds = this.aliveBotIds();
+    }
+
+    while (botIds.length > target) {
+      const id = botIds.pop();
+      delete this.snakes[id];
+      changed.removed.push(id);
+    }
+
+    return changed;
+  }
+
+  rebuildBotsNearPlayers() {
+    const changed = { added: [], removed: [] };
+    const target = this.targetBotCount();
+
+    for (const id of this.aliveBotIds()) {
+      delete this.snakes[id];
+      changed.removed.push(id);
+    }
+
+    for (let i = 0; i < target; i++) {
+      const bot = this.addBot();
+      changed.added.push(bot.id);
+    }
+
+    return changed;
   }
 
   addBot() {
@@ -176,9 +238,35 @@ class GameRoom {
     const nameIndex = Math.floor(Math.random() * BOT_NAMES.length);
     const botName = BOT_NAMES[nameIndex] + ' (bot)';
     const color = (THEMES[botTheme] || THEMES.classic).snake;
-    const spawn = this.randomSpawnPoint();
+    const spawn = this.randomBotSpawnPoint();
     const bot = new Bot('bot-' + this.nextId++, botName, spawn.x, spawn.y, color, botTheme);
     this.snakes[bot.id] = bot;
+    return bot;
+  }
+
+  randomBotSpawnPoint() {
+    const humans = Object.keys(this.snakes)
+      .map(id => this.snakes[id])
+      .filter(snake => snake.alive && !this.isBotId(snake.id) && snake.segments.length);
+
+    if (!humans.length) return this.randomSpawnPoint();
+
+    const player = humans[Math.floor(Math.random() * humans.length)];
+    const head = player.segments[0];
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 700 + Math.random() * 1400;
+      const point = {
+        x: head.x + Math.cos(angle) * distance,
+        y: head.y + Math.sin(angle) * distance
+      };
+
+      if (isInsideArena(point.x, point.y, 320) && this.isSpawnSafe(point)) {
+        return point;
+      }
+    }
+
+    return this.randomSpawnPoint();
   }
 
   respawn(ws, theme) {
@@ -189,7 +277,11 @@ class GameRoom {
     const spawn = this.randomSpawnPoint(id);
     const snake = handleGameRestartBuildSnake(Snake, id, old.name, spawn, activeTheme, THEMES);
     this.snakes[id] = snake;
+    const populationChanged = this.ensureBotPopulation();
     ws.send(JSON.stringify({ type: 'init', selfId: id, mapSize: MAP_SIZE, snakes: Object.values(this.snakes), food: [], config: { tickMs: TICK_MS } }));
+    if (populationChanged.added.length || populationChanged.removed.length) {
+      this.broadcast({ type: 'delta', moved: [], died: populationChanged.removed, sync: true });
+    }
   }
 
   randomSpawnPoint(ignoreId) {
@@ -228,7 +320,13 @@ class GameRoom {
       }
     }
     this.collide(died);
-    this.broadcast({ type: 'delta', moved, died });
+    const populationChanged = this.ensureBotPopulation();
+    this.broadcast({
+      type: 'delta',
+      moved,
+      died: died.concat(populationChanged.removed),
+      sync: populationChanged.added.length > 0 || populationChanged.removed.length > 0
+    });
     if (Date.now() - this.lastScores > 2000) {
       this.lastScores = Date.now();
       this.broadcast({ type: 'scores', leaderboard: this.leaderboard() });
@@ -301,11 +399,7 @@ class GameRoom {
     for (const pair of this.clients.entries()) {
       if (pair[1] === id) pair[0].send(JSON.stringify({ type: 'killed', by }));
     }
-    if (id.startsWith('bot-')) {
-    setTimeout(() => {
-      if (Object.keys(this.snakes).length < 15) this.addBot();
-    }, 3000);
-  }
+    if (this.isBotId(id)) delete this.snakes[id];
   }
 
   leaderboard() {
@@ -313,28 +407,30 @@ class GameRoom {
   }
 
   broadcast(message) {
-    const data = JSON.stringify(message);
     for (const [ws, clientId] of this.clients.entries()) {
     if (ws.readyState !== WebSocket.OPEN) continue;
     
     const clientSnake = this.snakes[clientId];
     if (!clientSnake || message.type !== 'delta') {
-      ws.send(data); 
+      ws.send(JSON.stringify(message)); 
       continue;
     }
     
     const head = clientSnake.segments[0];
     const VIEW = 2400;
+    const shouldSyncAll = message.sync === true;
     const filtered = {
       ...message,
       snakes: Object.values(this.snakes).filter(s => {
         if (!s.alive || s.id === clientId) return false;
+        if (shouldSyncAll || this.isBotId(s.id)) return true;
         const sh = s.segments[0];
         return Math.abs(sh.x - head.x) < VIEW && Math.abs(sh.y - head.y) < VIEW;
       }),
       moved: message.moved.filter(m => {
         const s = this.snakes[m.id];
         if (!s || m.id === clientId) return true;
+        if (shouldSyncAll || this.isBotId(m.id)) return true;
         const sh = s.segments[0];
         return Math.abs(sh.x - head.x) < VIEW && Math.abs(sh.y - head.y) < VIEW;
       })
@@ -383,6 +479,13 @@ wss.on('connection', ws => {
     const id = room.clients.get(ws);
     room.clients.delete(ws);
     if (id && room.snakes[id]) delete room.snakes[id];
+    const populationChanged = room.ensureBotPopulation();
+    room.broadcast({
+      type: 'delta',
+      moved: [],
+      died: (id ? [id] : []).concat(populationChanged.removed),
+      sync: populationChanged.added.length > 0 || populationChanged.removed.length > 0
+    });
   });
 });
 setInterval(() => room.tick(), TICK_MS);
