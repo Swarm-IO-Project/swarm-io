@@ -33,7 +33,10 @@ import {
   handleCollisionInteractionSpawnFoodRandomly
 } from './utils/collisionInteraction.js';
 
-const SERVER_URL = 'wss://swarmio.duckdns.org';
+const SERVER_URLS = [
+  'wss://swarmio.duckdns.org',
+  'ws://swarmio.duckdns.org:3000'
+];
 const canvas = document.getElementById('game-canvas');
 const ctx = canvas.getContext('2d');
 const lobby = document.getElementById('screen-lobby');
@@ -749,16 +752,196 @@ const THEMES = {
 const renderer = new Renderer(ctx);
 // Map size set to much larger 10000 (battleground size increased!)
 const state = { selfId: null, mapSize: 10000, snakes: {}, food: [], foodByColor: {}, leaderboard: [], theme: THEMES.classic };
+const MIN_LOCAL_ENTITIES = 10;
+const LOCAL_BOT_NAMES = ['Alpha', 'Nexus', 'Swift', 'Viper', 'Blaze', 'Apex', 'Hydra', 'Nova', 'Pulse', 'Echo', 'Orbit', 'Comet'];
 let socket = null;
 let selectedTheme = loadSelectedTheme();
 let lastInputAt = 0;
 let localMode = false;
 let localSnake = null;
 let animationStarted = false;
+let localBotCounter = 0;
 
 // Trigger nebulae initialization with increased map size
 initNebulae(state.mapSize);
 updateHighestScore(highestScoreText, loadHighScore());
+
+function isLocalBotId(id) {
+  return String(id).startsWith('local-bot-');
+}
+
+function createLocalSnake(id, name, x, y, color, theme, isBot) {
+  const snake = {
+    id,
+    name,
+    angle: Math.random() * Math.PI * 2,
+    targetAngle: 0,
+    speed: isBot ? 2.35 : 1.6,
+    color,
+    alive: true,
+    score: 10,
+    segments: [],
+    theme,
+    isBot: Boolean(isBot),
+    target: { x, y },
+    targetUntil: 0
+  };
+  snake.targetAngle = snake.angle;
+  for (let i = 0; i < 12; i++) {
+    snake.segments.push({ x: x - i * 8, y, renderX: x - i * 8, renderY: y });
+  }
+  snake.renderX = snake.segments[0].x;
+  snake.renderY = snake.segments[0].y;
+  return snake;
+}
+
+function randomPointNearLocalPlayer() {
+  if (!localSnake || !localSnake.segments.length) return randomArenaPoint(state.mapSize, 320);
+  const head = localSnake.segments[0];
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 700 + Math.random() * 1400;
+    const point = {
+      x: head.x + Math.cos(angle) * distance,
+      y: head.y + Math.sin(angle) * distance
+    };
+    if (isInsideArena(point.x, point.y, state.mapSize, 320)) return point;
+  }
+  return randomArenaPoint(state.mapSize, 320);
+}
+
+function addLocalBot() {
+  const theme = THEME_KEYS[Math.floor(Math.random() * THEME_KEYS.length)];
+  const themeConfig = THEMES[theme] || THEMES.classic;
+  const point = randomPointNearLocalPlayer();
+  const id = 'local-bot-' + (++localBotCounter);
+  const name = LOCAL_BOT_NAMES[localBotCounter % LOCAL_BOT_NAMES.length] + ' (bot)';
+  const bot = createLocalSnake(id, name, point.x, point.y, themeConfig.snake, theme, true);
+  state.snakes[id] = bot;
+  return bot;
+}
+
+function ensureLocalBotPopulation() {
+  if (!localMode || !localSnake || !localSnake.alive) return;
+  const aliveHumans = Object.keys(state.snakes).filter(id => !isLocalBotId(id) && state.snakes[id].alive).length;
+  const targetBots = Math.max(0, MIN_LOCAL_ENTITIES - aliveHumans);
+  let botIds = Object.keys(state.snakes).filter(id => isLocalBotId(id) && state.snakes[id].alive);
+
+  while (botIds.length < targetBots) {
+    addLocalBot();
+    botIds = Object.keys(state.snakes).filter(id => isLocalBotId(id) && state.snakes[id].alive);
+  }
+
+  while (botIds.length > targetBots) {
+    const id = botIds.pop();
+    delete state.snakes[id];
+  }
+}
+
+function chooseLocalBotTarget(bot) {
+  const head = bot.segments[0];
+  let bestFood = null;
+  let bestFoodDist = Infinity;
+  for (let i = 0; i < state.food.length; i++) {
+    const food = state.food[i];
+    const dx = food.x - head.x;
+    const dy = food.y - head.y;
+    const dist = dx * dx + dy * dy;
+    if (dist < bestFoodDist && dist < 700 * 700) {
+      bestFood = food;
+      bestFoodDist = dist;
+    }
+  }
+
+  if (bestFood) {
+    bot.target = { x: bestFood.x, y: bestFood.y };
+    return;
+  }
+
+  const dx = head.x - bot.target.x;
+  const dy = head.y - bot.target.y;
+  if (Date.now() > bot.targetUntil || dx * dx + dy * dy < 1600) {
+    bot.target = randomPointNearLocalPlayer();
+    bot.targetUntil = Date.now() + 4500;
+  }
+}
+
+function moveLocalSnake(snake, speed) {
+  snake.angle = rotateToward(snake.angle, snake.targetAngle, Math.PI / 16);
+  const head = snake.segments[0];
+  const next = {
+    x: head.x + Math.cos(snake.angle) * speed,
+    y: head.y + Math.sin(snake.angle) * speed,
+    renderX: head.renderX,
+    renderY: head.renderY
+  };
+  snake.segments.unshift(next);
+  snake.segments.pop();
+  return next;
+}
+
+function killLocalSnake(id, by) {
+  const snake = state.snakes[id];
+  if (!snake || !snake.alive) return;
+  snake.alive = false;
+  for (let i = 0; i < snake.segments.length; i += 2) {
+    handleCollisionInteractionSpawnFoodAt(state, snake.segments[i].x, snake.segments[i].y, 1, 2.5 + Math.random() * 1.8, snake.color, FOOD_COLORS);
+  }
+  if (id === state.selfId) endGame(by);
+  if (isLocalBotId(id)) {
+    delete state.snakes[id];
+    ensureLocalBotPopulation();
+  }
+}
+
+function checkLocalSnakeCollisions() {
+  const aliveIds = Object.keys(state.snakes).filter(id => state.snakes[id].alive);
+  for (let i = 0; i < aliveIds.length; i++) {
+    const id = aliveIds[i];
+    const snake = state.snakes[id];
+    const head = snake.segments[0];
+    const radius = snakeRadius(snake);
+    if (!isInsideArena(head.x, head.y, state.mapSize, radius)) {
+      killLocalSnake(id, 'Wall');
+      continue;
+    }
+
+    for (let j = 0; j < aliveIds.length; j++) {
+      const otherId = aliveIds[j];
+      if (id === otherId) continue;
+      const other = state.snakes[otherId];
+      if (!other || !other.alive) continue;
+      const otherRadius = snakeRadius(other);
+      for (let k = 0; k < other.segments.length; k++) {
+        const segment = other.segments[k];
+        const dx = head.x - segment.x;
+        const dy = head.y - segment.y;
+        const hitRadius = radius + otherRadius;
+        if (dx * dx + dy * dy < hitRadius * hitRadius) {
+          killLocalSnake(id, other.name);
+          if (k === 0 && snake.segments.length > other.segments.length) {
+            killLocalSnake(otherId, snake.name);
+          }
+          break;
+        }
+      }
+      if (!snake.alive) break;
+    }
+  }
+}
+
+function updateLocalLeaderboard() {
+  if (!localMode) return;
+  state.leaderboard = Object.values(state.snakes)
+    .filter(snake => snake.alive)
+    .sort((a, b) => b.segments.length - a.segments.length)
+    .slice(0, 10)
+    .map(snake => ({
+      id: snake.id,
+      name: snake.name,
+      length: snake.segments.length
+    }));
+}
 
 function checkLocalEating() {
   for (const id in state.snakes) {
@@ -780,10 +963,10 @@ function checkLocalEating() {
         // Notify server that this snake ate food
         if (!localMode && socket && socket.readyState === WebSocket.OPEN) {
           socket.send(JSON.stringify({ type: 'eat', snakeId: id, value: food.value }));
-        } else if (localMode && id === 'local') {
+        } else if (localMode) {
           // If offline mode, grow local snake immediately
-          const tail = localSnake.segments[localSnake.segments.length - 1];
-          localSnake.segments.push({ x: tail.x, y: tail.y, renderX: tail.renderX, renderY: tail.renderY });
+          const tail = snake.segments[snake.segments.length - 1];
+          snake.segments.push({ x: tail.x, y: tail.y, renderX: tail.renderX, renderY: tail.renderY });
         }
         
         // Spawn a replacement food safely
@@ -798,23 +981,22 @@ function startLocalFallback() {
   localMode = true;
   initNebulae(state.mapSize);
   const color = state.theme.snake;
-  localSnake = { id: 'local', name: nameInput.value || 'Player', angle: 0, targetAngle: 0, speed: 1.6, color, alive: true, score: 10, segments: [], theme: selectedTheme };
   // Spawn player near the center of the expanded map
   const centerPos = state.mapSize / 2;
-  for (let i = 0; i < 12; i++) localSnake.segments.push({ x: centerPos - i * 8, y: centerPos, renderX: centerPos - i * 8, renderY: centerPos });
-  localSnake.renderX = localSnake.segments[0].x;
-  localSnake.renderY = localSnake.segments[0].y;
+  localBotCounter = 0;
+  localSnake = createLocalSnake('local', nameInput.value || 'Player', centerPos, centerPos, color, selectedTheme, false);
   state.selfId = 'local';
   state.snakes = { local: localSnake };
   state.food = [];
+  ensureLocalBotPopulation();
   // Spawn 2000 safe varying size food in offline mode
   handleCollisionInteractionSpawnFoodRandomly(state, 2000, randomArenaPoint, snakeRadius, FOOD_COLORS);
   showGameScreen(lobby, canvas);
 }
 
-function connect() {
+function connect(urlIndex = 0) {
   localMode = false;
-  socket = new WebSocket(SERVER_URL);
+  socket = new WebSocket(SERVER_URLS[urlIndex]);
   socket.onopen = function () {
     socket.send(JSON.stringify({ type: 'join', name: nameInput.value.slice(0, 16) || 'Player', theme: selectedTheme }));
   };
@@ -835,7 +1017,13 @@ function connect() {
     if (message.type === 'scores') state.leaderboard = message.leaderboard;
     if (message.type === 'killed') endGame(message.by || 'Unknown');
   };
-  socket.onerror = startLocalFallback;
+  socket.onerror = function () {
+    if (urlIndex + 1 < SERVER_URLS.length) {
+      connect(urlIndex + 1);
+      return;
+    }
+    startLocalFallback();
+  };
 }
 
 function prepareSnake(snake) {
@@ -913,19 +1101,8 @@ function updateLocal() {
   if (!localSnake || !localSnake.alive) return;
   
   const canBoost = localSnake.boost && localSnake.segments.length > 12;
-  if (canBoost) {
-    localSnake.speed = 5.0;
-  } else {
-    localSnake.speed = 3.0;
-  }
-
-  localSnake.angle = rotateToward(localSnake.angle, localSnake.targetAngle, Math.PI / 16);
-
-  const head = localSnake.segments[0];
-  const next = { x: head.x + Math.cos(localSnake.angle) * localSnake.speed, y: head.y + Math.sin(localSnake.angle) * localSnake.speed, renderX: head.renderX, renderY: head.renderY };
-  localSnake.segments.unshift(next);
-  localSnake.segments.pop();
-  if (!isInsideArena(next.x, next.y, state.mapSize, snakeRadius(localSnake))) endGame('Wall');
+  localSnake.speed = canBoost ? 5.0 : 3.0;
+  moveLocalSnake(localSnake, localSnake.speed);
 
   if (canBoost) {
     if (!localSnake.boostCounter) localSnake.boostCounter = 0;
@@ -948,6 +1125,18 @@ function updateLocal() {
   } else {
     localSnake.boostCounter = 0;
   }
+
+  for (const id in state.snakes) {
+    const snake = state.snakes[id];
+    if (!snake.alive || !snake.isBot) continue;
+    chooseLocalBotTarget(snake);
+    snake.targetAngle = Math.atan2(snake.target.y - snake.segments[0].y, snake.target.x - snake.segments[0].x);
+    moveLocalSnake(snake, snake.speed);
+  }
+
+  checkLocalSnakeCollisions();
+  ensureLocalBotPopulation();
+  updateLocalLeaderboard();
 }
 
 function endGame(by) {
