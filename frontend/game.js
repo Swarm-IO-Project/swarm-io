@@ -33,7 +33,7 @@ import {
   handleCollisionInteractionSpawnFoodRandomly
 } from './utils/collisionInteraction.js';
 
-const SERVER_URL = 'ws://83.171.249.199:3000';
+const SERVER_URL = 'wss://swarmio.duckdns.org';
 const canvas = document.getElementById('game-canvas');
 const ctx = canvas.getContext('2d');
 const lobby = document.getElementById('screen-lobby');
