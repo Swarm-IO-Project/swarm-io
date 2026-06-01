@@ -37,6 +37,9 @@ const SERVER_URLS = [
   'wss://swarmio.duckdns.org',
   'ws://swarmio.duckdns.org:3000'
 ];
+const ACTIVE_SERVER_URLS = location.protocol === 'https:'
+  ? SERVER_URLS.filter(url => url.startsWith('wss://'))
+  : SERVER_URLS;
 const canvas = document.getElementById('game-canvas');
 const ctx = canvas.getContext('2d');
 const lobby = document.getElementById('screen-lobby');
@@ -996,7 +999,17 @@ function startLocalFallback() {
 
 function connect(urlIndex = 0) {
   localMode = false;
-  socket = new WebSocket(SERVER_URLS[urlIndex]);
+  if (urlIndex >= ACTIVE_SERVER_URLS.length) {
+    startLocalFallback();
+    return;
+  }
+
+  try {
+    socket = new WebSocket(ACTIVE_SERVER_URLS[urlIndex]);
+  } catch (error) {
+    connect(urlIndex + 1);
+    return;
+  }
   socket.onopen = function () {
     socket.send(JSON.stringify({ type: 'join', name: nameInput.value.slice(0, 16) || 'Player', theme: selectedTheme }));
   };
@@ -1018,7 +1031,7 @@ function connect(urlIndex = 0) {
     if (message.type === 'killed') endGame(message.by || 'Unknown');
   };
   socket.onerror = function () {
-    if (urlIndex + 1 < SERVER_URLS.length) {
+    if (urlIndex + 1 < ACTIVE_SERVER_URLS.length) {
       connect(urlIndex + 1);
       return;
     }

@@ -2,92 +2,122 @@
 
 AI tools used: ChatGPT, Claude, Gemini.
 
-## Entry 1 - Project Structure
+### 2026-05-27 02:22 - Project folders were too unclear
 
-Question: How should I organize a browser snake game with a frontend and backend?
+**What I asked the AI:** How should I organize a browser snake game with frontend and backend code?
+**What it gave me:** A simple split with `frontend/`, `backend/`, and helper files.
+**What was wrong:** The first suggestion was too general and did not explain which logic should live in each folder.
+**How I fixed it:** I separated rendering into the frontend, WebSocket/game state into the backend, and shared-style helper logic into `utils` folders.
+**Time lost:** ~8 minutes
 
-AI helped me separate the project into a Canvas frontend and a WebSocket backend. This made the code easier to understand because rendering, server state, and helper functions each have their own place.
+### 2026-05-27 02:42 - HTML loaded before the game was ready
 
-## Entry 2 - Canvas Rendering
+**What I asked the AI:** Why is my browser game not starting correctly from the HTML file?
+**What it gave me:** A basic HTML structure with a script tag.
+**What was wrong:** The answer did not mention that module imports need `type="module"`.
+**How I fixed it:** I loaded the frontend game file as a module so utility imports worked correctly.
+**Time lost:** ~6 minutes
 
-Question: How can I draw a snake game on an HTML canvas?
+### 2026-05-27 02:56 - Snake movement felt too sharp
 
-AI explained how to clear the canvas every frame, move the camera around the player, and draw entities like snakes, food, and the arena background in the correct order.
+**What I asked the AI:** How can I make the snake follow the mouse smoothly?
+**What it gave me:** Directly set the snake angle to the mouse angle.
+**What was wrong:** The movement snapped instantly and did not feel like a snake.
+**How I fixed it:** I added `targetAngle` and used gradual rotation with `rotateToward`.
+**Time lost:** ~10 minutes
 
-## Entry 3 - Player Movement
+### 2026-05-27 03:12 - Snake body did not follow naturally
 
-Question: How can the snake follow the mouse smoothly?
+**What I asked the AI:** How do I make the snake body follow the head?
+**What it gave me:** A simple idea of moving every body segment manually.
+**What was wrong:** Moving every segment independently looked messy and caused spacing problems.
+**How I fixed it:** I inserted a new head segment each tick and removed the tail segment when the snake was not growing.
+**Time lost:** ~7 minutes
 
-AI suggested using the mouse position to calculate a target angle, then rotating the snake toward that angle gradually. This helped the movement feel smoother instead of instantly snapping.
+### 2026-05-27 03:26 - Food collision was unreliable
 
-## Entry 4 - Snake Body Logic
+**What I asked the AI:** How can I detect when the snake eats food?
+**What it gave me:** A basic distance check between the snake head and food.
+**What was wrong:** The first check ignored the actual radius of food and snake size.
+**How I fixed it:** I compared squared distance with the combined radii of the snake head and food.
+**Time lost:** ~9 minutes
 
-Question: How do I make the snake body follow the head?
+### 2026-05-27 03:40 - Wall collision ended the game too early
 
-AI helped with the idea of adding a new head segment each tick and removing the last tail segment when the snake is not growing. This creates the classic snake movement effect.
+**What I asked the AI:** How can I detect if the snake hits the arena wall?
+**What it gave me:** A rectangle boundary check using map width and height.
+**What was wrong:** My arena is circular, so rectangle collision did not match the visible map.
+**How I fixed it:** I changed the wall check to use distance from the arena center and subtract the snake radius.
+**Time lost:** ~8 minutes
 
-## Entry 5 - Food Collection
+### 2026-05-27 03:51 - Game over state mixed with movement code
 
-Question: How can I detect when the snake eats food?
+**What I asked the AI:** What should happen when the player dies?
+**What it gave me:** Put the death UI update directly inside movement logic.
+**What was wrong:** This made movement, scoring, and UI logic too tangled.
+**How I fixed it:** I created a separate `endGame` flow that updates final score, high score, and screen state.
+**Time lost:** ~6 minutes
 
-AI explained circle collision using distance checks between the snake head and food. If the distance is smaller than the combined radii, the food is collected and the snake grows.
+### 2026-05-27 04:04 - Score did not update consistently
 
-## Entry 6 - Collision Detection
+**What I asked the AI:** How should I calculate the player's score?
+**What it gave me:** Store a separate score number.
+**What was wrong:** The score could get out of sync with the actual snake length.
+**How I fixed it:** I used the snake segment length as the main score source.
+**Time lost:** ~5 minutes
 
-Question: How can I detect wall and snake collisions?
+### 2026-05-28 10:07 - Start screen and canvas overlapped
 
-AI helped design collision checks for the arena boundary and for snake-vs-snake contact. The head position is checked against the circular arena and nearby snake segments.
+**What I asked the AI:** How can I switch between lobby and gameplay screens?
+**What it gave me:** Toggle a hidden class on the lobby.
+**What was wrong:** The canvas still stayed visible in some states.
+**How I fixed it:** I added screen helper functions to show the lobby, show the game, and hide/show the canvas correctly.
+**Time lost:** ~9 minutes
 
-## Entry 7 - Game Over Logic
+### 2026-05-28 10:23 - Game over screen needed the final score
 
-Question: What should happen when the player dies?
+**What I asked the AI:** How do I show the final score after death?
+**What it gave me:** A separate death screen idea.
+**What was wrong:** It did not match my combined lobby/game-over UI.
+**How I fixed it:** I reused the lobby screen and added a game-over score section that appears only after death.
+**Time lost:** ~7 minutes
 
-AI suggested separating the death flow from the movement loop. When the player dies, the game shows a game over state, displays the final score, and stops normal play until restart.
+### 2026-05-28 11:32 - Restart created stale state
 
-## Entry 8 - Restarting The Game
+**What I asked the AI:** How can I restart without refreshing the page?
+**What it gave me:** Reset only the button text and start movement again.
+**What was wrong:** Old snake and food state could remain from the previous round.
+**How I fixed it:** I reset UI state and asked the server/local fallback to create a fresh snake.
+**Time lost:** ~10 minutes
 
-Question: How can I restart the game without refreshing the page?
+### 2026-05-28 11:48 - Respawn was not visible to other players
 
-AI helped create a restart flow that resets the UI and asks the server for a fresh snake. This lets the player click Play Again and continue in the same browser session.
+**What I asked the AI:** Why can I respawn but my friend does not see me?
+**What it gave me:** Only send movement updates after respawn.
+**What was wrong:** Other clients did not have the new snake snapshot yet.
+**How I fixed it:** I made the server send enough sync data so clients can create missing snakes.
+**Time lost:** ~9 minutes
 
-## Entry 9 - High Score
+### 2026-05-29 14:12 - High score reset after refresh
 
-Question: How can I save the highest score in the browser?
+**What I asked the AI:** How can I keep the high score after closing the page?
+**What it gave me:** Store the score in a JavaScript variable.
+**What was wrong:** A normal variable disappears when the page reloads.
+**How I fixed it:** I used `localStorage` to save and load the high score in the browser.
+**Time lost:** ~6 minutes
 
-AI recommended using `localStorage` because the high score only needs to be stored locally in the player's browser. The value is loaded on the start screen and updated after death.
+### 2026-05-31 22:25 - WebSocket worked locally but failed on HTTPS
 
-## Entry 10 - WebSocket Backend
+**What I asked the AI:** Why does the multiplayer backend fail from the hosted frontend?
+**What it gave me:** Use the deployed backend URL in the frontend.
+**What was wrong:** The page was loaded over HTTPS, so insecure `ws://` connections were blocked by the browser.
+**How I fixed it:** I switched the frontend to use `wss://` for the deployed backend and kept local fallback behavior for failed connections.
+**Time lost:** ~10 minutes
 
-Question: Why should I use WebSocket for this game?
+### 2026-05-31 23:05 - Bots existed but did not appear near the player
 
-AI explained that WebSocket is useful because the game needs frequent real-time updates. The browser can send input to the server, and the server can send movement updates back to players.
-
-## Entry 11 - Multiplayer Sync
-
-Question: How can other players see newly joined or respawned snakes?
-
-AI helped me understand that the server needs to send enough state for clients to create missing entities. A movement update alone is not enough if the client has never seen that snake before.
-
-## Entry 12 - Bot Population
-
-Question: How can I keep the game active when there are not many real players?
-
-AI suggested maintaining a minimum number of active entities. If there are fewer real players, the backend fills the arena with bots so the game does not feel empty.
-
-## Entry 13 - Bot Spawn Placement
-
-Question: Why do bots exist on the server but not appear near the player?
-
-AI helped find that bots were spawning randomly across a very large map. The fix was to spawn bots near real players so they are more likely to appear on screen.
-
-## Entry 14 - Code Splitting
-
-Question: How can I make the game code easier to read?
-
-AI suggested moving repeated logic into utility files, such as movement helpers, collision helpers, restart helpers, and score helpers. This keeps the main game file less crowded.
-
-## Entry 15 - Production Backend URL
-
-Question: Why is my frontend still connecting to localhost after deploying the backend?
-
-AI helped identify that the frontend selected `localhost` when opened locally. The server URL needed to point directly to the deployed backend IP so the browser would connect to the VPS.
+**What I asked the AI:** Why are bots not visible even though the server creates them?
+**What it gave me:** Keep a fixed number of bots in the room.
+**What was wrong:** The map was very large, so bots spawned far away from the player.
+**How I fixed it:** I changed bot spawning so bots are generated near real players and replaced when they die.
+**Time lost:** ~8 minutes
